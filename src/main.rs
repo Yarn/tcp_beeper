@@ -118,7 +118,7 @@ struct Args {
     #[arg(short, long, default_value_t = 1.)]
     volume: f32,
     
-    /// Minimum rate that must be reached before beeping starts
+    /// Minimum rate that must be reached before beeping starts (hz)
     /// uses a 4 second window
     #[arg(short, long)]
     min_rate: Option<f32>,
