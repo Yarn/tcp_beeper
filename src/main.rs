@@ -40,16 +40,26 @@ fn start_loop(addr: &str, output_device: Device, volume_mult: f32, rate_threshol
     let mut _pending_beep = Arc::clone(&pending_beep);
     let addr = addr.to_string();
     let net_thread_handle = std::thread::spawn(move || {
-        let timeout = ::std::time::Duration::from_millis(800);
-        let addr = addr.to_socket_addrs().into_diagnostic()?.next().ok_or_else(|| miette::miette!("Invalid address"))?;
-        let stream = TcpStream::connect_timeout(&addr, timeout).into_diagnostic()?;
-        stream.set_read_timeout(Some(timeout)).into_diagnostic()?;
-        for _ in stream.bytes() {
-            _pending_beep.fetch_add(1, Relaxed);
-        }
+        let inner = || {
+            let timeout = ::std::time::Duration::from_millis(800);
+            let addr = addr.to_socket_addrs().into_diagnostic()?.next().ok_or_else(|| miette::miette!("Invalid address"))?;
+            let stream = TcpStream::connect_timeout(&addr, timeout).into_diagnostic()?;
+            eprintln!("connected");
+            stream.set_read_timeout(Some(timeout)).into_diagnostic()?;
+            for _ in stream.bytes() {
+                _pending_beep.fetch_add(1, Relaxed);
+            }
+            
+            let res: miette::Result<()> = Ok(());
+            res
+        };
         
-        let res: miette::Result<()> = Ok(());
-        res
+        loop {
+            if let Err(err) = inner() {
+                dbg!(err);
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+            }
+        }
     });
     
     const SLEEP_TIME: ::std::time::Duration = ::std::time::Duration::from_millis(8);
