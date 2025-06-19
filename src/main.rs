@@ -3,7 +3,7 @@ use std::iter::Iterator;
 use std::collections::VecDeque;
 use std::sync::{ Arc, atomic::{ AtomicU32, Ordering::Relaxed } };
 use std::io::prelude::*;
-use std::net::TcpStream;
+use std::net::{ TcpStream, ToSocketAddrs as _ };
 
 use miette::IntoDiagnostic;
 use clap::Parser;
@@ -39,8 +39,11 @@ fn start_loop(addr: &str, output_device: Device, volume_mult: f32, rate_threshol
     let pending_beep = Arc::new(AtomicU32::new(0));
     let mut _pending_beep = Arc::clone(&pending_beep);
     let addr = addr.to_string();
-    std::thread::spawn(move || {
-        let stream = TcpStream::connect(&addr).into_diagnostic()?;
+    let net_thread_handle = std::thread::spawn(move || {
+        let timeout = ::std::time::Duration::from_millis(800);
+        let addr = addr.to_socket_addrs().into_diagnostic()?.next().ok_or_else(|| miette::miette!("Invalid address"))?;
+        let stream = TcpStream::connect_timeout(&addr, timeout).into_diagnostic()?;
+        stream.set_read_timeout(Some(timeout)).into_diagnostic()?;
         for _ in stream.bytes() {
             _pending_beep.fetch_add(1, Relaxed);
         }
@@ -70,6 +73,10 @@ fn start_loop(addr: &str, output_device: Device, volume_mult: f32, rate_threshol
     let mut bin_time = 0.;
     
     loop {
+        if net_thread_handle.is_finished() {
+            return net_thread_handle.join().expect("thread join");
+        }
+        
         if bin_time > bin_period {
             bin_time -= bin_period;
             rate_buf.pop_front();
